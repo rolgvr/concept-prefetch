@@ -115,13 +115,52 @@ def run(sessions, k=4, dev_frac=0.3):
     return out
 
 
+def coverage(sessions):
+    """Where do the needed segments of turn t+1 come from? Share found in turn t's cues (aggregate only)."""
+    c = defaultdict(int)
+    for sess in sessions:
+        ts, seen = sess["turns"], set()
+        for t in range(1, len(ts)):
+            prev = ts[t - 1]
+            seen |= set(prev["conv"]) | set(prev["env"]) | set(prev["needed"])
+            for s in set(ts[t]["needed"]):
+                c["needed"] += 1
+                c["in_prev_env"] += s in set(prev["env"])
+                c["in_prev_conv"] += s in set(prev["conv"])
+                c["in_prev_needed"] += s in set(prev["needed"])
+                c["in_any_earlier_cue"] += s in seen
+                c["only_in_env_earlier"] += (s in set(prev["env"])) and s not in set(prev["needed"])
+    n = c.pop("needed") or 1
+    return {k: round(v / n, 3) for k, v in c.items()} | {"n_needed": n}
+
+
+def upper_bound(sessions, k):
+    """OPTIMISTIC, IN-SAMPLE: tune each method on all sessions. Not a valid estimate, only a ceiling check;
+    if graded cannot beat recency by 10 points even here, the null is robust."""
+    out = {}
+    for name in ("recency", "conversation", "environment", "graded"):
+        p = fit(sessions, name, k)
+        out[name] = {"params": p, **evaluate(sessions, name, p, k)}
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("sessions")
     ap.add_argument("--k", type=int, default=4)
     ap.add_argument("--out")
+    ap.add_argument("--upper-bound", action="store_true", help="in-sample tuning ceiling + cue coverage, k=2,4,8")
     a = ap.parse_args()
-    res = run(json.loads(Path(a.sessions).read_text(encoding="utf-8")), k=a.k)
+    sessions = json.loads(Path(a.sessions).read_text(encoding="utf-8"))
+    if a.upper_bound:
+        res = {"WARNING": "in-sample tuning; optimistic ceiling, not an estimate",
+               "n_sessions": len(sessions), "coverage": coverage(sessions),
+               "by_k": {k: upper_bound(sessions, k) for k in (2, 4, 8)}}
+        print(json.dumps(res, indent=1))
+        if a.out:
+            Path(a.out).write_text(json.dumps(res, indent=1))
+        return
+    res = run(sessions, k=a.k)
     print(json.dumps(res, indent=1))
     if a.out:
         Path(a.out).write_text(json.dumps(res, indent=1))

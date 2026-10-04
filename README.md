@@ -80,6 +80,20 @@ hit rate > 50%.
   Wasted prefetch 60–68%. The advantage disappears when conversations don't follow topic links (hit rate 0.71 vs
   0.70), so the next test is whether *real* topic transitions are predictable (TopiOCQA replay, no GPU needed).
 
+- **2026-10-04, H2 locked → novelty: partially covered; the combination appears novel** (see notes/novelty.md).
+- **2026-10-04, H2 on the user's own Claude Code logs (run locally by the user; aggregates only):** 5 usable
+  sessions, 1,018 turns. Test split (4 sessions, 1,595 needed-file events), hit@4:
+
+  | recency | conversation | environment | graded |
+  |---|---|---|---|
+  | 10.5% | 0.3% | 6.1% | 11.0% |
+
+  **Pre-registered criterion 1 fails** (+0.5 pt vs a required +10). Criterion 2 passes (+10.8 pt).
+  Caveats: the dev split was 1 session with 10 events and 0 hits for every method, so fitting was degenerate and
+  graded weights were arbitrary (they collapsed to recency-like). 56% of needed files never appeared in any earlier
+  cue (reachable ceiling 44%). Next: an in-sample upper bound (`--upper-bound`) to check whether the null holds
+  even under tuning that favours H2.
+
 ## Reproduce
 
 ```bash
