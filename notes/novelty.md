@@ -90,3 +90,29 @@ Constraints this sets for the work:
    Report bytes moved, wasted prefetch, and TTFT together.
 3. Selective prefetch only matters when **conversation KV > GPU budget**. If everything fits, or reloading
    everything fits within think time, "reload all" wins trivially. The experiment must sweep this regime.
+
+---
+
+# H2 novelty check: environment-cued graded activation (2026-10-04)
+
+| Paper | What it does | Gap vs H2 | Close |
+|---|---|---|---|
+| [SYNAPSE](https://arxiv.org/abs/2601.02744) (Jan 2026) | Spreading activation (Collins & Loftus) + lateral inhibition + temporal decay over an episodic/semantic memory graph | Triggered by the query; text retrieval only; no prefetch, KV, tiers, or environment cues | 1.5 |
+| [Predictive Multi-Tier KV](https://arxiv.org/abs/2604.26968) (Apr 2026) | 6-tier KV hierarchy; a Bayesian reuse predictor sets the tier by confidence; RoPE-aware prefetch | The confidence-to-tier half of H2, but predicted from block statistics, not semantics or environment | 1.5 |
+| [HeLa-Mem](https://arxiv.org/abs/2604.16839) (ACL 2026) | Hebbian associative memory with spreading recall | Query-triggered text | 1 |
+| [ProactiveBench](https://arxiv.org/abs/2410.12361) (2024) | Keyboard, browser, and IDE events → predicts when to offer help | Outputs task suggestions, not caching | 1 |
+| [ProAgent](https://arxiv.org/abs/2512.06721) (Dec 2025) | Tiered perception: cheap cues escalate to rich sensing on demand | The tiering is on perception, not memory/KV (a good analogy to cite) | 1 |
+| [ProCodeBench](https://arxiv.org/abs/2605.05700) (ICML 2026) | Real VS Code traces from 1,246 developers; intent prediction | No latency or caching. **Candidate public dataset for H2** | 1 |
+| [Speculative Pre-Positioning](https://arxiv.org/abs/2606.29565) (Jun 2026) | Decodes the session forward in idle time; confidence-gated serving | From session state, not external cues | 1 |
+| [SmoothAgent](https://arxiv.org/abs/2607.00151) (Jun 2026) | Lookahead preparation of transformed KV for the agent's own context edits | Not user-query anticipation | 1 |
+| [PCR](https://arxiv.org/abs/2603.23049) | SSD → DRAM → GPU RAG KV prefetch for queued requests | Reactive | 1 |
+| CAMeR, CHI'24 human-like recall, CodingGenie, Leyline, CACE, LOCAL | — | — | 0.5 |
+
+Unverified, **check first:** llm-d issue #2584 "intent-driven speculative prefill" (RFC); the ACT-R-inspired memory
+for LLM agents (ACM, 403); ContextAgent 2605.14668 (note: the agent reported 2505.14668); CueMem 2609.12354;
+Continuum Memory Architectures 2601.09913; ProAgentBench; and others listed in the agent report.
+
+**H2 verdict:** partially covered; the combination appears novel. Spreading activation exists (SYNAPSE), environment-event
+proactivity exists (ProactiveBench, ProCodeBench), and confidence-tiered KV promotion exists (2604.26968). Not found:
+environment and tool events spreading activation over context segments, with graded activation mapped to index → CPU
+compressed KV → GPU full KV, ahead of the query.
