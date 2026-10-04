@@ -1,115 +1,152 @@
-# Concept-Level Speculative Prefetch
+# concept-prefetch
 
-**Question:** in multi-turn dialogue, does pre-warming the representations an *active topic* predicts you'll need
-(during the user's think time) cut follow-up latency compared with on-demand loading, without hurting accuracy?
+Can an LLM serving system guess what you are about to ask, and have the right context loaded before you ask it?
 
-Hypothesis drawn from introspection on aphantasia: a persistent latent, query-first addressing,
-and eager topic-driven prefetch. Claude is used as the research and coding tool.
+This repo tests one version of that idea. During a conversation, the user spends a few seconds reading and typing
+between turns, and the GPU sits mostly idle. If the system can predict which pieces of context the next question
+will need, it can move them into GPU memory during that gap. The follow-up then starts faster.
 
-Status: **day 1 done: conditional GO** (see [notes/go-no-go.md](notes/go-no-go.md)). Next: test whether real topic transitions are predictable. A null result is a valid outcome and will be reported as one.
+The idea came from thinking about how recall works without mental imagery (aphantasia). The knowledge is always
+there but nothing is rendered by default. You decide what you want before anything appears, and when a topic comes
+up, related material gets "warmed" in the background so later questions about it feel instant. This project asks
+whether that last part translates into a useful caching policy for LLMs.
 
-## Hypotheses
+## Short answer so far
 
-- **H1:** Pre-warming representations for semantically anticipated sub-queries of the active topic reduces
-  follow-up latency against a reactive baseline, with no accuracy loss.
-- **H0:** No latency gain, or a gain cancelled out by accuracy loss, wasted prefetch, or memory overhead.
+- **Mechanism: works, but only under the right conditions.** Prefetching cuts follow-up latency when a cache miss is
+  expensive (the context has to be recomputed, not just copied) and the next topic is predictable.
+- **Real data: no gain on coding-agent sessions.** On my own coding-assistant session logs, nothing beat
+  "keep what was used most recently" by more than ~2 points.
+- **Still open: whether real human conversations drift predictably enough to matter.** That is the next experiment.
 
-## Design note: why the baseline matters
+## Is this new?
 
-With plain prefix caching, the topic's KV entries are already resident on the GPU. A follow-up then only prefills
-its own ~20 tokens, so prefetch has nothing to save, and a toy run under that baseline would be null by
-construction. Prefetch can only pay off when there is a **memory hierarchy**, meaning the context is offloaded,
-evicted, compressed, or retrieved between turns. In that setting the topic predictor decides which segments to
-load or prefill during the user's idle time. The toy baseline is therefore *on-demand reload*, not *prefix caching*.
+Partly. I went through about 60 papers (full list in [notes/novelty.md](notes/novelty.md)). The closest work:
 
-## Metrics (locked before any run)
+| Work | What it does | What's different here |
+|---|---|---|
+| [VoiceAgentRAG](https://arxiv.org/abs/2603.02206) (2026) | Predicts follow-up topics in a voice conversation and pre-fetches documents between turns | Fetches text chunks; this project prefetches the model's own KV cache |
+| [EpiCache](https://arxiv.org/abs/2509.17396) (2025) | Splits a long conversation's KV cache into topic "episodes" | Picks the episode after the question arrives; here it's picked before |
+| [PerCache](https://arxiv.org/abs/2601.11553) (2025) | Predicts future queries on a phone and precomputes their KV overnight | Works across sessions, not during a live conversation |
+| [SYNAPSE](https://arxiv.org/abs/2601.02744) (2026) | Spreading-activation memory for agents | Retrieval only, triggered by the query |
+| [Where should the KV cache live?](https://arxiv.org/abs/2609.16215) (2026) | Studies KV placement across GPU/CPU/SSD | Finds that history-based prefetch doesn't pay for its bandwidth, a result any prefetch scheme has to beat |
 
-| Metric | Definition |
-|---|---|
-| Follow-up TTFT | time to first token on follow-up turns, ms (median over N runs, after warm-up) |
-| Accuracy | task score, same scorer for both arms |
-| Prefetch hit rate | share of follow-ups whose needed segment was already warm |
-| Wasted prefetch | share of warmed segments never used |
-| Memory overhead | peak extra memory vs baseline, MB |
+Predicting the topic, then moving that topic's KV segments onto a memory-limited GPU during the user's think time,
+is the part I couldn't find done elsewhere.
 
-**Success threshold (draft, to be locked in step 2):** ≥15% lower median follow-up TTFT, accuracy within 1 point,
-hit rate > 50%.
+## Experiment 1: toy prefetch on a small model
 
-## Plan
+**Setup.**
+- Model: Qwen2.5-0.5B-Instruct on an RTX 4090 laptop GPU.
+- Data: 8 made-up companies, each with a fact sheet of 20 attributes. Each sheet is prefilled into its own KV
+  segment (~770 tokens), kept in CPU memory.
+- GPU budget: k segments at a time.
+- Conversations: 40 simulated, 12 questions each. They mostly stay on one company and sometimes move to a "partner"
+  or "competitor" named in its fact sheet.
+- Policies compared at the same budget:
+  - **on-demand:** load after the question arrives, keep nothing.
+  - **reactive LRU:** load after the question, keep the most recent k.
+  - **topic:** between turns, preload the current company plus its linked companies.
+  - **oracle:** always preloads exactly the right one.
 
-1. Novelty check (arXiv, Semantic Scholar, ICML/NeurIPS/ICLR/ACL 2025–26). Verdict: novel / partially covered / taken.
-2. Lock the design: model, task, baseline, threshold.
-3. Toy experiment: small open model, synthetic entity with 20 attributes, 5–10 follow-ups.
-4. Go/no-go note.
+All policies run on the same turns in shuffled order. The laptop GPU switches between two clock speeds, and running
+the policies one after another produced fake differences.
 
-## Log
+**Results.** Mean time to first token on follow-up questions, when a miss means recomputing the segment:
 
-- **2026-10-04:** Repo created. Changed the toy baseline from prefix caching to on-demand reload (see design note).
-  Novelty check started.
-- **2026-10-04:** Novelty check done, ~45 papers opened ([notes/novelty.md](notes/novelty.md)).
-  Verdict: **partially covered.** Closest prior work: VoiceAgentRAG (topic-predicted text prefetch), EpiCache
-  (topic-segmented KV, selected after the query arrives), PerCache (predicted queries → KV, cross-session).
-  The open niche is narrow: topic-predicted promotion of conversation KV segments into a bounded GPU budget during
-  think time. Required baselines: EpiCache-reactive, reload-all, on-demand, oracle.
-- **2026-10-04:** Locked [DESIGN.md](DESIGN.md) (committed before any run). `.venv`: Python 3.12, torch 2.14+cu126,
-  transformers 5.18.
-- **2026-10-04, sanity check → design deviation (before any policy run).** Qwen2.5-0.5B with fact-sheet KV segments
-  prefilled independently at fixed RoPE slots (≈776 tokens, 9.5 MB per segment):
+| GPU budget | on-demand | reactive LRU | topic | oracle | topic vs LRU |
+|---|---|---|---|---|---|
+| 1 segment | 72.0 ms | 48.8 ms | 49.6 ms | 33.9 ms | no difference |
+| 2 segments | 72.0 ms | 46.7 ms | 43.8 ms | 33.1 ms | 6.2% faster (95% CI 2.6–10%) |
+| 3 segments | 72.0 ms | 44.5 ms | 35.8 ms | 33.6 ms | 19.4% faster (95% CI 14–25%) |
 
-  | Attention scope | Accuracy (n=40) |
-  |---|---|
-  | only the queried segment | **97.5%** |
-  | queried + 1 other segment | 42.5% |
-  | queried + 2 others | 35% |
-  | all 8 segments | 12.5% |
-  | contiguous full context (normal prefill, 6.2k tokens) | 67.5% |
+![Latency and hit rate by GPU budget](results/ttft_hit.png)
 
-  Segments encoded independently interfere when several are attended at once (the cross-segment problem described
-  in CacheBlend). **Change:** GPU residency (budget k) is now separate from attention scope; each follow-up attends
-  only to the segment named in the query (EpiCache-style). Consequence: accuracy is the same for every method, so the
-  toy tests **latency only**, and threshold 3 is trivially met. Side result: scoped attention beats full context
-  on this model (97.5% vs 67.5%).
-- **Miss costs measured:** reload from pinned CPU ≈ 0.8 ms; recompute ≈ 79 ms; query TTFT ≈ 50 ms. The reload tier
-  cannot reach a 15% gain on a 0.5B model, as predicted.
-- **2026-10-04, run 1 discarded:** configurations ran one after another, and the laptop GPU switched clock states
-  (~20 vs ~50 ms query TTFT). Two policies that behave identically measured 22.5 vs 49.9 ms. Re-run with all
-  policies interleaved per turn (`toy/run_interleaved.py`), with paired comparisons.
-- **2026-10-04, toy result → conditional GO** ([notes/go-no-go.md](notes/go-no-go.md)). Recompute tier, k = 2:
-  topic prefetch beats reactive LRU by **6.2% mean** (95% CI 2.6–10%), and by 19.4% at k = 3. The locked
-  median criterion passes (23.6%), but the median is fragile under the bimodal GPU clock. Reload tier: no gain.
-  Wasted prefetch 60–68%. The advantage disappears when conversations don't follow topic links (hit rate 0.71 vs
-  0.70), so the next test is whether *real* topic transitions are predictable (TopiOCQA replay, no GPU needed).
+**What this shows.**
+- **The gain is just hit rate times miss cost.** When a miss only means copying 9 MB from CPU memory (~0.5 ms), no
+  policy beats any other. Prefetching only matters when misses are expensive: large models, long contexts, or
+  context stored on disk or across a network.
+- **The advantage comes entirely from the topic links.** When the simulated conversations ignore the links, topic
+  prediction and plain recency hit equally often (71% vs 70%). I wrote both the link structure and the predictor,
+  so this toy shows the mechanism works but says nothing about real conversations.
+- **Most prefetches are wasted.** 60–68% of preloaded segments were never used.
+- **Side finding on accuracy.** Fact sheets encoded separately confuse the model when several are visible at once:
+  97.5% accuracy with one sheet, 42.5% with two, 12.5% with all eight. Normal full-context prompting got 67.5%. So
+  every policy attends only to the sheet the question names, which also means this experiment measures latency,
+  not accuracy.
 
-- **2026-10-04, H2 locked → novelty: partially covered; the combination appears novel** (see notes/novelty.md).
-- **2026-10-04, H2 on the user's own Claude Code logs (run locally by the user; aggregates only):** 5 usable
-  sessions, 1,018 turns. Test split (4 sessions, 1,595 needed-file events), hit@4:
+## Experiment 2: environment cues in real coding sessions
 
-  | recency | conversation | environment | graded |
-  |---|---|---|---|
-  | 10.5% | 0.3% | 6.1% | 11.0% |
+The second hypothesis broadens the first. People get sudden associations from what's around them, not only from the
+conversation. For a coding assistant, "around" means things like a traceback, a grep result, or a file that was just
+opened. The question: do those cues predict which files the next request will need, better than recency alone?
 
-  **Pre-registered criterion 1 fails** (+0.5 pt vs a required +10). Criterion 2 passes (+10.8 pt).
-  Caveats: the dev split was 1 session with 10 events and 0 hits for every method, so fitting was degenerate and
-  graded weights were arbitrary (they collapsed to recency-like). 56% of needed files never appeared in any earlier
-  cue (reachable ceiling 44%). Next: an in-sample upper bound (`--upper-bound`) to check whether the null holds
-  even under tuning that favours H2.
-- **2026-10-04, H2 upper bound (in-sample tuning on all 5 sessions, deliberately optimistic): the null holds.**
+**Setup.**
+- Data: my own coding-assistant session logs, parsed locally (raw logs never leave the machine). 5 sessions,
+  1,018 turns.
+- For each turn, the parser records:
+  - **needed:** the files the assistant opened or edited;
+  - **environment cues:** file paths that appeared in tool output;
+  - **conversation cues:** file names mentioned in messages.
+- Predictors:
+  - **recency;**
+  - **conversation cues only;**
+  - **environment cues only;**
+  - **graded activation:** a decaying score that combines all three.
+- Measure: hit rate at a budget of k files.
 
-  | k | recency | graded (tuned in-sample) | gain |
-  |---|---|---|---|
-  | 2 | 7.2% | 10.0% | +2.7 pt |
-  | 4 | 10.5% | 12.3% | +1.9 pt |
-  | 8 | 15.5% | 17.4% | +1.9 pt |
+**Results.** The pre-registered test (tune on the earliest sessions, score on the rest) gave 11.0% for graded
+activation against 10.5% for recency at k=4. The bar was +10 points, so the test fails. With only five sessions the
+tuning split was nearly empty. As a fairer check, I tuned on all the data, which flatters the method:
 
-  Cue coverage (the share of files needed at t+1 that appeared at turn t): environment 4.5%, conversation 0.4%,
-  touched 8.2%. **Files that appeared in the environment but were not already touched: 0.0%.** In these
-  sessions, environment cues never carried information ahead of recency. 56% of needed files had never appeared
-  before in the session.
+| GPU budget | recency | graded (tuned on all data) | gain |
+|---|---|---|---|
+| 2 files | 7.2% | 10.0% | +2.7 pt |
+| 4 files | 10.5% | 12.3% | +1.9 pt |
+| 8 files | 15.5% | 17.4% | +1.9 pt |
 
-  Interpretation: in agentic coding the *agent* consumes environment cues (grep hits, tracebacks) **within the
-  same turn**. The user's next query mostly brings in new files. The think-time window between turns has
-  little predictable content beyond recency. Limits: 1 user, 5 sessions, file-level proxy for KV segments;
-  conversation-cue resolution is basename-only and may undercount.
+**Why it doesn't work here.**
+- **The cues never run ahead of recency.** No file that showed up in tool output was later needed without already
+  having been opened (0.0%).
+- **Most needs are unpredictable.** 56% of the files each request needed had never appeared earlier in the session.
+- **The agent consumes the cues itself.** In agentic coding, the assistant acts on the environment inside a single
+  turn, so by the time the user types the next request, the cues have been used up. This is a clear negative result
+  for between-turn prefetch in coding agents, from one person's logs.
+
+## Limitations
+
+- **Experiment 1 is built to favour the idea.** I designed both the conversation structure and the predictor.
+- **The model is small.** A 0.5B model makes cache misses cheap, so the realistic "copy from CPU" case can't show a
+  gain. The interesting regime is 7B+ models with long contexts.
+- **Files stand in for KV segments in Experiment 2.** It is also one user and five sessions.
+- **The wrong metric was pre-registered.** I locked in the median latency. Because the GPU clock is bimodal, the mean
+  turned out to be the reliable statistic. Both are reported.
+
+## Next
+
+1. **Test predictability on data where a person drifts between topics.**
+   - [TopiOCQA](https://huggingface.co/datasets/McGill-NLP/TopiOCQA): conversational QA whose topic switches follow
+     Wikipedia links.
+   - [ProCodeBench](https://arxiv.org/abs/2605.05700): real IDE interaction traces.
+
+   This needs no GPU. If topic or environment prediction can't beat recency by about 10 points there, the idea stops.
+2. **Only if step 1 passes, run the systems experiment properly.** That means:
+   - an 8B model;
+   - an expensive miss tier;
+   - EpiCache- and VoiceAgentRAG-style baselines at the same memory budget;
+   - accuracy measured per turn.
+
+## Repo layout
+
+```
+DESIGN.md                  hypotheses, metrics and thresholds, committed before each experiment ran
+toy/                       Experiment 1: data generator, segmented KV engine, runs, analysis
+replay/                    Experiment 2: replay simulator, log parser, tests
+results/                   aggregate results and the plot
+notes/novelty.md           literature review with per-paper notes
+notes/go-no-go.md          decision notes after each experiment
+notes/log.md               lab notebook, including dead ends
+```
 
 ## Reproduce
 
@@ -117,9 +154,14 @@ hit rate > 50%.
 py -3.12 -m venv .venv
 .venv/Scripts/python -m pip install torch --index-url https://download.pytorch.org/whl/cu126
 .venv/Scripts/python -m pip install transformers accelerate numpy pandas matplotlib
-.venv/Scripts/python toy/run.py              # hit-rate sweep + accuracy check (its sequential timings are discarded)
-.venv/Scripts/python toy/run_interleaved.py  # paired latency measurement
-.venv/Scripts/python toy/analyze.py
-```
 
-![TTFT and hit rate](results/ttft_hit.png)
+# Experiment 1
+.venv/Scripts/python toy/run.py              # topic-structure sweep and accuracy check
+.venv/Scripts/python toy/run_interleaved.py  # latency measurement, all policies interleaved
+.venv/Scripts/python toy/analyze.py
+
+# Experiment 2 (reads local session logs; output stays in data/private/)
+.venv/Scripts/python replay/parse_claude_logs.py
+.venv/Scripts/python replay/replay.py data/private/claude_sessions.json --k 4
+.venv/Scripts/python replay/replay.py data/private/claude_sessions.json --upper-bound
+```

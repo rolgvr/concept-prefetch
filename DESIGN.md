@@ -1,6 +1,6 @@
 # H2: environment-cued graded activation (locked 2026-10-04, before any data is read)
 
-Origin: Rolando's observation of "drifting thoughts": associations that pop up almost instantly from cues in the
+Origin: the observation of "drifting thoughts": associations that pop up almost instantly from cues in the
 environment, most of which fade unused. Reading for systems: cheap, broad, graded activation, with only a
 few candidates promoted to expensive warm state.
 
@@ -14,7 +14,7 @@ conversation-only.
 This is a **data / predictability** test (no GPU). Latency follows from hit rate × miss cost, as the toy showed.
 
 ## Datasets
-- **A. Local coding sessions** (the user's own Claude Code logs; raw data never leaves the machine and only
+- **A. Local coding sessions** (my own coding-assistant session logs; raw data never leaves the machine and only
   aggregate metrics are committed). Segment = a file. Needed set for turn t+1 = files the assistant opens or edits
   while answering user turn t+1. Environment cues = file paths appearing in tool *outputs* (tracebacks, grep/ls
   results, test failures) and files touched. Conversation cues = paths or file names mentioned in the user or
