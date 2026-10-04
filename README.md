@@ -3,7 +3,7 @@
 **Question:** in multi-turn dialogue, does pre-warming the representations an *active topic* predicts you'll need
 (during the user's think time) cut follow-up latency compared with on-demand loading, without hurting accuracy?
 
-Hypothesis by Rolando Gavrila, drawn from introspection on aphantasia: a persistent latent, query-first addressing,
+Hypothesis drawn from introspection on aphantasia: a persistent latent, query-first addressing,
 and eager topic-driven prefetch. Claude is used as the research and coding tool.
 
 Status: **day 1 done: conditional GO** (see [notes/go-no-go.md](notes/go-no-go.md)). Next: test whether real topic transitions are predictable. A null result is a valid outcome and will be reported as one.
