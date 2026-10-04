@@ -93,6 +93,23 @@ hit rate > 50%.
   graded weights were arbitrary (they collapsed to recency-like). 56% of needed files never appeared in any earlier
   cue (reachable ceiling 44%). Next: an in-sample upper bound (`--upper-bound`) to check whether the null holds
   even under tuning that favours H2.
+- **2026-10-04, H2 upper bound (in-sample tuning on all 5 sessions, deliberately optimistic): the null holds.**
+
+  | k | recency | graded (tuned in-sample) | gain |
+  |---|---|---|---|
+  | 2 | 7.2% | 10.0% | +2.7 pt |
+  | 4 | 10.5% | 12.3% | +1.9 pt |
+  | 8 | 15.5% | 17.4% | +1.9 pt |
+
+  Cue coverage (the share of files needed at t+1 that appeared at turn t): environment 4.5%, conversation 0.4%,
+  touched 8.2%. **Files that appeared in the environment but were not already touched: 0.0%.** In these
+  sessions, environment cues never carried information ahead of recency. 56% of needed files had never appeared
+  before in the session.
+
+  Interpretation: in agentic coding the *agent* consumes environment cues (grep hits, tracebacks) **within the
+  same turn**. The user's next query mostly brings in new files. The think-time window between turns has
+  little predictable content beyond recency. Limits: 1 user, 5 sessions, file-level proxy for KV segments;
+  conversation-cue resolution is basename-only and may undercount.
 
 ## Reproduce
 

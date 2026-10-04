@@ -73,3 +73,23 @@ Wikipedia hyperlinks, and the predictor sees only the current page.
 - If topic-hit beats LRU-hit by ≥ 10 points on real data → build the systems experiment on an 8B model with a real
   miss cost and a learned predictor, against EpiCache and VoiceAgentRAG-style baselines.
 - If not → stop. Then the honest result is that "conversations are mostly local; recency already captures it".
+
+---
+
+# H2 update (2026-10-04): environment-cued graded activation → **null on coding-session logs**
+
+- Pre-registered test (dev 1 session / test 4 sessions): graded 11.0% vs recency 10.5% at k = 4 → **fails** +10 pt.
+- Optimistic in-sample ceiling: +1.9 to +2.7 pt at k = 2/4/8 → the null is robust to tuning.
+- Mechanism of the null: environment cues never anticipated a file that recency didn't already hold (0.0%),
+  and 56% of needed files were new to the session. In agentic coding, environment → action happens *inside*
+  a turn, executed by the agent, not across the user's think time.
+
+What would still be worth testing (not done):
+1. **Within-turn, step-level prefetch:** tool output → next tool call, seconds later. This is where the
+   environment cues actually lead, but it overlaps with speculative tool-call prior art (PASTE, Speculative
+   Actions, CacheScout).
+2. **Human-driven environments** (ProCodeBench IDE traces, TopiOCQA). There the human, not an agent, acts on
+   cues between queries. This is the setting the drifting-thoughts intuition describes.
+
+Combined status: H1 = conditional (gain only with expensive misses and predictable topic links); H2 = null on
+agentic coding logs (n = 1 user, 5 sessions).
