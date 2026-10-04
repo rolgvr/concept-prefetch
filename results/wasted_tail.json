@@ -1,0 +1,13 @@
+{
+ "on-demand-k1": 0,
+ "reactive-lru-k1": 0,
+ "topic-k1": 0,
+ "oracle-k1": 0,
+ "reactive-lru-k2": 0,
+ "topic-k2": 26,
+ "oracle-k2": 0,
+ "reactive-lru-k3": 0,
+ "topic-k3": 56,
+ "oracle-k3": 0,
+ "all-resident-k8": 156
+}
