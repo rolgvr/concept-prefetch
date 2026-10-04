@@ -1,3 +1,51 @@
+# H2: environment-cued graded activation (locked 2026-10-04, before any data is read)
+
+Origin: Rolando's observation of "drifting thoughts": associations that pop up almost instantly from cues in the
+environment, most of which fade unused. Reading for systems: cheap, broad, graded activation, with only a
+few candidates promoted to expensive warm state.
+
+**H2:** Across real multi-turn sessions, a predictor that combines conversation cues *and* environment cues into
+a decaying activation score anticipates the context the next query needs better than recency, and better than
+conversation-only prediction.
+
+**H2-null:** Recency matches it within 10 points (conversations are local), or environment cues add < 5 points over
+conversation-only.
+
+This is a **data / predictability** test (no GPU). Latency follows from hit rate × miss cost, as the toy showed.
+
+## Datasets
+- **A. Local coding sessions** (the user's own Claude Code logs; raw data never leaves the machine and only
+  aggregate metrics are committed). Segment = a file. Needed set for turn t+1 = files the assistant opens or edits
+  while answering user turn t+1. Environment cues = file paths appearing in tool *outputs* (tracebacks, grep/ls
+  results, test failures) and files touched. Conversation cues = paths or file names mentioned in the user or
+  assistant *text*.
+- **B. TopiOCQA** (public, topic-switching conversational QA). Segment = a topic page. Cue = the next topic's title
+  appearing in the current turn's text. Tests H1's "predictable topic drift" on public data.
+
+## Predictors (all ranked lists; the warm set = top-k)
+1. `recency`: the k most recently needed segments.
+2. `conversation`: decaying activation from conversation cues only.
+3. `environment`: decaying activation from environment cues only.
+4. `graded` (H2): activation = Σ cue weights × decay^age, from both sources plus recency.
+   - Tiers by rank: top k = GPU; ranks k+1..4k = CPU staging (shallow).
+   - Reported: hit@k (GPU), hit@4k (shallow), wasted fraction.
+
+Weights and decay are fit on a **dev split** (the first 30% of sessions by time), then frozen and evaluated once
+on the remaining 70%.
+
+## Metrics
+- **hit@k:** share of needed segments at turn t+1 that were in the warm set built before the query.
+  Only segments seen before (in any cue) count as reachable. Also reported: the reachable ceiling, and hit
+  over all segments.
+- **Wasted:** share of warmed segments not used at turn t+1.
+
+## Success threshold (test split, k = 4)
+1. `graded` hit@k ≥ `recency` hit@k + 10 points.
+2. `graded` hit@k ≥ `conversation` hit@k + 5 points (the environment contributes).
+3. Both hold on dataset A; dataset B is reported as a secondary result.
+
+---
+
 # Toy experiment design (locked 2026-10-04, before any run)
 
 ## Setting
