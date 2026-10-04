@@ -46,3 +46,8 @@ hit rate > 50%.
 
 - **2026-10-04:** Repo created. Changed the toy baseline from prefix caching to on-demand reload (see design note).
   Novelty check started.
+- **2026-10-04:** Novelty check done, ~45 papers opened ([notes/novelty.md](notes/novelty.md)).
+  Verdict: **partially covered.** Closest prior work: VoiceAgentRAG (topic-predicted text prefetch), EpiCache
+  (topic-segmented KV, selected after the query arrives), PerCache (predicted queries → KV, cross-session).
+  The open niche is narrow: topic-predicted promotion of conversation KV segments into a bounded GPU budget during
+  think time. Required baselines: EpiCache-reactive, reload-all, on-demand, oracle.
