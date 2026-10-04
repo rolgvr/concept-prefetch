@@ -109,7 +109,7 @@ Constraints this sets for the work:
 | CAMeR, CHI'24 human-like recall, CodingGenie, Leyline, CACE, LOCAL | — | — | 0.5 |
 
 Unverified, **check first:** llm-d issue #2584 "intent-driven speculative prefill" (RFC); the ACT-R-inspired memory
-for LLM agents (ACM, 403); ContextAgent 2605.14668 (note: the agent reported 2505.14668); CueMem 2609.12354;
+for LLM agents (ACM, 403); ContextAgent 2505.14668; CueMem 2609.12354;
 Continuum Memory Architectures 2601.09913; ProAgentBench; and others listed in the agent report.
 
 **H2 verdict:** partially covered; the combination appears novel. Spreading activation exists (SYNAPSE), environment-event
